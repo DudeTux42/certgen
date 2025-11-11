@@ -131,7 +131,7 @@ fn generate_example(output: &str, extended: bool) -> Result<()> {
                 "date": "15.01.2024",
                 "date_from": "10.01.2024",
                 "date_to": "15.01.2024",
-                "agenda": "· Modul 1: Grundlagen\\n· Modul 2: Advanced\\n· Modul 3: Praxis",
+                "agenda": "· Modul 1: Grundlagen\n· Modul 2: Advanced\n· Modul 3: Praxis",
                 "TITLE": "Rust Programmierung Intensivkurs",
                 "INSTRUCTOR": "Dr. Schmidt",
                 "HOURS": "40"
@@ -139,7 +139,7 @@ fn generate_example(output: &str, extended: bool) -> Result<()> {
             {
                 "name": "Erika Musterfrau",
                 "date": "20.01.2024",
-                "agenda": "· Python Basics\\n· Data Science\\n· Machine Learning",
+                "agenda": "· Python Basics\n· Data Science\n· Machine Learning",
                 "TITLE": "Python für Data Science",
                 "INSTRUCTOR": "Prof. Müller",
                 "HOURS": "8"
@@ -150,13 +150,13 @@ fn generate_example(output: &str, extended: bool) -> Result<()> {
             {
                 "name": "Max Mustermann",
                 "date": "15.01.2024",
-                "agenda": "· Rust Grundlagen\\n· Ownership & Borrowing\\n· Error Handling",
+                "agenda": "· Rust Grundlagen\n· Ownership & Borrowing\n· Error Handling",
                 "TITLE": "Rust Grundlagen Workshop"
             },
             {
                 "name": "Erika Musterfrau",
                 "date": "20.01.2024",
-                "agenda": "· Python Basics\\n· Libraries\\n· Best Practices",
+                "agenda": "· Python Basics\n· Libraries\n· Best Practices",
                 "TITLE": "Python Einführung"
             }
         ])

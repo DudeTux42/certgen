@@ -59,11 +59,15 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
     let mut item_number = 1;
     
     loop {
-        if item_number > 10 {break};
+        if item_number > 10 {
+            break
+        };
+
         let item = read_line(&format!("  {}. ", item_number))?;
         if item.is_empty() {
             break;
         }
+
         agenda_items.push(format!("· {}", item));
         item_number += 1;
     }
@@ -74,6 +78,13 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
     }
 
     let agenda = agenda_items.join("\n");
+
+    // Zusatzfelder abfragen
+    println!();
+    println!("Zusätzliche Felder?");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Geben Sie zusätzliche Felder an (leer = fertig):");
+
 
     // Teilnehmer abfragen
     println!();
