@@ -62,7 +62,6 @@ impl OdfDocument {
                 continue;
             }
 
- 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           
             debug!("Processing file: {}", filename);
             
             // content.xml und styles.xml können Text enthalten
