@@ -23,6 +23,32 @@ impl OdfDocument {
         })
     }
 
+    /// Entfernt XML-Tags aus Platzhaltern
+    /// Wandelt: von {{</text:span><text:span>INSTRUCTOR</text:span><text:span>}}
+    /// In: von {{INSTRUCTOR}}
+    fn clean_split_placeholders(content: &str) -> String {
+        use regex::Regex;
+        
+        // Regex die {{...}} findet, auch wenn XML-Tags dazwischen sind
+        // Matcht: {{ [beliebiger Text mit optionalen XML-Tags] }}
+        let re = Regex::new(r"\{\{([^}]*(?:<[^>]+>[^}]*)*)\}\}").unwrap();
+        
+        let result = re.replace_all(content, |caps: &regex::Captures| {
+            let inner = &caps[1];
+            
+            // Entferne alle XML-Tags aus dem Inneren
+            let tag_remover = Regex::new(r"<[^>]+>").unwrap();
+            let cleaned = tag_remover.replace_all(inner, "");
+            
+            // Entferne Whitespace
+            let trimmed = cleaned.trim();
+            
+            format!("{{{{{}}}}}", trimmed)
+        });
+        
+        result.to_string()
+    }
+
     /// Füllt das Dokument mit Daten und speichert es
     pub fn fill_and_save(
         &self,
@@ -46,7 +72,7 @@ impl OdfDocument {
             mimetype_file.read_to_string(&mut content)?;
             
             let options = FileOptions::default()
-                .compression_method(CompressionMethod::Stored); // KEINE Kompression!
+                .compression_method(CompressionMethod::Stored);
             
             output_archive.start_file("mimetype", options)?;
             output_archive.write_all(content.as_bytes())?;
@@ -61,7 +87,7 @@ impl OdfDocument {
             if filename == "mimetype" {
                 continue;
             }
-
+            
             debug!("Processing file: {}", filename);
             
             // content.xml und styles.xml können Text enthalten
@@ -69,8 +95,12 @@ impl OdfDocument {
                 let mut content = String::new();
                 file.read_to_string(&mut content)?;
                 
-                // Replacements durchführen (mit XML-Escaping)
-                let replaced = replacer.replace_all(&content, replacements);
+                // ERST: XML-Tags aus Platzhaltern entfernen
+                debug!("Cleaning split placeholders...");
+                let cleaned = Self::clean_split_placeholders(&content);
+                
+                // DANN: Replacements durchführen (mit XML-Escaping)
+                let replaced = replacer.replace_all(&cleaned, replacements);
                 
                 let options = FileOptions::default()
                     .compression_method(CompressionMethod::Deflated);
@@ -120,11 +150,20 @@ impl OdfDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
 
     #[test]
-    fn test_open_nonexistent() {
-        let result = OdfDocument::open("nonexistent.odt");
-        assert!(result.is_err());
+    fn test_clean_split_placeholders() {
+        let input = r#"text <text:span>{{</text:span><text:span>NAME</text:span><text:span>}}</text:span> more"#;
+        let expected = "text {{NAME}} more";
+        let result = OdfDocument::clean_split_placeholders(input);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_clean_complex_split() {
+        let input = r#"von {{</text:span><text:span text:style-name="T2">INSTRUCTOR</text:span><text:span>}}"#;
+        let expected = "von {{INSTRUCTOR}}";
+        let result = OdfDocument::clean_split_placeholders(input);
+        assert_eq!(result, expected);
     }
 }

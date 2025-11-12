@@ -79,11 +79,39 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
 
     let agenda = agenda_items.join("\n");
 
-    // Zusatzfelder abfragen
+    // Custom Fields abfragen
     println!();
-    println!("Zusätzliche Felder?");
+    println!("🔧 Zusätzliche Felder (optional)");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Geben Sie zusätzliche Felder an (leer = fertig):");
+    println!("Geben Sie zusätzliche Felder an (z.B. INSTRUCTOR, HOURS)");
+    println!("Feldname leer lassen = fertig");
+    
+    let mut custom_fields = std::collections::HashMap::new();
+    
+    loop {
+        println!();
+        let field_name = read_line("Feldname (z.B. INSTRUCTOR): ")?;
+        if field_name.is_empty() {
+            break;
+        }
+        
+        let field_value = read_line(&format!("Wert für {}: ", field_name))?;
+        if field_value.is_empty() {
+            println!("⚠️  Wert darf nicht leer sein, Feld wird übersprungen.");
+            continue;
+        }
+        
+        custom_fields.insert(field_name.to_uppercase(), field_value);
+    }
+
+    // Zusammenfassung der Custom Fields
+    if !custom_fields.is_empty() {
+        println!();
+        println!("✓ Folgende zusätzliche Felder werden verwendet:");
+        for (key, value) in &custom_fields {
+            println!("  • {}: {}", key, value);
+        }
+    }
 
 
     // Teilnehmer abfragen
@@ -120,6 +148,11 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
         if let Some(ref to) = date_to {
             cert_data.date_from = Some(date_from.clone());
             cert_data.date_to = Some(to.clone());
+        }
+
+        // custom_fields hinzufügen
+        for (key, value) in &custom_fields {
+            cert_data.add_field(key.clone(), value.clone());
         }
 
         participants.push(cert_data);
