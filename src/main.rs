@@ -106,15 +106,26 @@ fn fill_single(
     Ok(())
 }
 
+
 fn fill_batch(template: &str, json_path: &str, output_dir: &str) -> Result<usize> {
     let doc = OdfDocument::open(template)?;
     let certificates = CertificateData::batch_from_json_file(json_path)?;
 
     let batch_data: Vec<(String, HashMap<String, String>)> = certificates
         .iter()
-        .enumerate()
-        .map(|(i, cert)| {
-            let filename = format!("certificate_{}_{}.odt", i + 1, sanitize_filename(&cert.name));
+        .map(|cert| {
+            // Name bereinigen
+            let cleaned_name = sanitize_filename(&cert.name);
+            
+            // Titel aus custom_fields holen und bereinigen
+            let title = cert.custom_fields
+                .get("TITLE")
+                .map(|t| sanitize_filename(t))
+                .unwrap_or_else(|| "Kurs".to_string());
+            
+            // Dateiname: <name>_<titel>.odt
+            let filename = format!("{}_{}.odt", cleaned_name, title);
+            
             (filename, cert.to_replacements())
         })
         .collect();

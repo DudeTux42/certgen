@@ -75,7 +75,14 @@ Beschreibung:
 Typischer Aufruf:
 
 ```bash
-certgen fill template.odt -o output.odt --name "Max Mustermann" --title "Rust Workshop" --date "2025-11-11" --agenda "· Modul 1\n· Modul 2" --custom-field INSTRUCTOR="Dr. Schmidt" --custom-field HOURS="40"
+certgen fill template.odt \
+-o output.odt \
+--name "Max Mustermann" \
+--title "Rust Workshop" \
+--date "2025-11-11" \
+--agenda "· Modul 1\n· Modul 2" \
+--custom-field INSTRUCTOR="Dr. Schmidt" \
+--custom-field HOURS="40"
 ```
 
 Erklärung der wichtigsten Optionen (Namen können in --help nachgesehen werden):
@@ -130,7 +137,7 @@ Beschreibung:
 Aufruf:
 
 ```bash
-certgen create-json -o participants.json
+certgen create-json -o schulungstitel.json
 ```
 
 ---
@@ -241,8 +248,3 @@ Wenn ein Fehler nicht klar ist, teste mit:
 Siehe LICENSE-Datei im Repository.
 
 ---
-
-Wenn du möchtest, übernehme ich gerne:
-- die Datei in das Repository schreiben (README.md),
-- oder ich passe die Beispiele an deine konkrete Vorlage (nenne mir die Platzhalter-Namen),
-- oder ich erstelle ein Beispiel-ODT mit passenden Platzhaltern, das du testen kannst.
