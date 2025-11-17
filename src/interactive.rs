@@ -129,6 +129,7 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
             break;
         }
         
+        let mail = read_line(&format!("  {}. E-Mail: ", participant_number ))?;
         // Bestimme das Haupt-Datum (für eintägig = date_from, für mehrtägig = date_to)
         let main_date = match &date_to {
             Some(to) => to.clone(),
@@ -137,6 +138,7 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
         
         let mut cert_data = CertificateData::new(
             name,
+            mail.clone(),
             main_date,
             agenda.clone(),
         );
@@ -155,8 +157,8 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
             cert_data.add_field(key.clone(), value.clone());
         }
 
-        participants.push(cert_data);
-        participant_number += 1;
+        participants.push(cert_data, mail);
+        participant_number += 1;, mail
     }
 
     if participants.is_empty() {
