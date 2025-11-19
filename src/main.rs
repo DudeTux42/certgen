@@ -1,7 +1,8 @@
-use certgen::{Cli, Commands, CertificateData, OdfDocument, Result};
+use certgen::{Cli, Commands, CertificateData, OdfDocument, Result, CertgenError};
 use clap::Parser;
 use log::{error, info};
-use std::collections::HashMap;
+use serde_json::Value;
+use std::path::Path;
 
 fn main() {
     if let Err(e) = run() {
@@ -102,36 +103,87 @@ fn fill_single(
         data.add_field(key, value);
     }
 
-    doc.fill_and_save(output, &data.to_replacements())?;
+    // Wenn .pdf als Ausgabe gewünscht ist, benutze die neue PDF-Kette
+    if output.to_lowercase().ends_with(".pdf") {
+        doc.fill_and_save_pdf(output, &data.to_replacements())?;
+    } else {
+        doc.fill_and_save(output, &data.to_replacements())?;
+    }
     Ok(())
 }
 
 
 fn fill_batch(template: &str, json_path: &str, output_dir: &str) -> Result<usize> {
     let doc = OdfDocument::open(template)?;
-    let certificates = CertificateData::batch_from_json_file(json_path)?;
 
-    let batch_data: Vec<(String, HashMap<String, String>)> = certificates
-        .iter()
-        .map(|cert| {
-            // Name bereinigen
-            let cleaned_name = sanitize_filename(&cert.name);
-            
-            // Titel aus custom_fields holen und bereinigen
-            let title = cert.custom_fields
-                .get("TITLE")
-                .map(|t| sanitize_filename(t))
-                .unwrap_or_else(|| "Kurs".to_string());
-            
-            // Dateiname: <name>_<titel>.odt
-            let filename = format!("{}_{}.odt", cleaned_name, title);
-            
-            (filename, cert.to_replacements())
-        })
-        .collect();
+    // Lies die ganze JSON-Datei als Value, damit wir später die erzeugten Dateinamen zurückschreiben können
+    let content = std::fs::read_to_string(json_path)?;
+    let mut v: Value = serde_json::from_str(&content)?;
 
-    let created = doc.batch_fill(output_dir, batch_data)?;
-    Ok(created.len())
+    // Erwartet ein top-level Array
+    let arr = match v.as_array_mut() {
+        Some(a) => a,
+        None => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Expected top-level JSON array in batch file",
+            )
+            .into())
+        }
+    };
+
+    std::fs::create_dir_all(output_dir)?;
+
+    let mut created = 0usize;
+
+    for (idx, item) in arr.iter_mut().enumerate() {
+        // bestimme das CertificateData-Objekt:
+        // - falls wrapper { "email": "...", "certificate": { ... } } -> benutze das innere .certificate
+        // - sonst: item selbst sollte ein CertificateData-Objekt sein
+        let cert_value = if item.get("certificate").is_some() {
+            item.get("certificate").unwrap().clone()
+        } else {
+            item.clone()
+        };
+
+        // Deserialisiere in CertificateData (explizit CertgenError verwenden, um Ambiguität zu vermeiden)
+        let cert: CertificateData = serde_json::from_value(cert_value)
+            .map_err(CertgenError::from)?;
+
+        // Erzeuge Dateinamen wie zuvor: <name>_<title>.pdf (sanitisiert)
+        let cleaned_name = sanitize_filename(&cert.name);
+        let title = cert.custom_fields
+            .get("TITLE")
+            .map(|t| sanitize_filename(t))
+            .unwrap_or_else(|| "Kurs".to_string());
+
+        let filename = format!("{}_{}.pdf", cleaned_name, title);
+        let output_path = Path::new(output_dir).join(&filename);
+        let output_str = output_path.to_str().unwrap();
+
+        // Erstelle das PDF (fill_and_save_pdf löscht die temporäre .odt selbst)
+        doc.fill_and_save_pdf(output_str, &cert.to_replacements())?;
+
+        // Schreibe den generierten Dateinamen zurück in das JSON-Objekt
+        // Hier schreibe ich den Pfad mit Ordnernamen: "<output_dir>/<filename>"
+        let stored_path_string = Path::new(output_dir)
+            .join(&filename)
+            .to_string_lossy()
+            .to_string();
+
+        if let Value::Object(map) = item {
+            map.insert("generated_file".to_string(), Value::String(stored_path_string));
+        }
+
+        created += 1;
+        info!("Created [{}] -> {}", idx, output_str);
+    }
+
+    // Schreibe die aktualisierte JSON-Datei zurück (überschreibt input file)
+    let pretty = serde_json::to_string_pretty(&v)?;
+    std::fs::write(json_path, pretty)?;
+
+    Ok(created)
 }
 
 fn generate_example(output: &str, extended: bool) -> Result<()> {

@@ -1,10 +1,13 @@
 use crate::error::{CertgenError, Result};
 use crate::odf::replacer::PlaceholderReplacer;
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::path::Path;
+use std::process::Command;
 use zip::{ZipArchive, ZipWriter, write::FileOptions, CompressionMethod};
 use log::{debug, info};
+use which::which; // Laufzeit-Check ob 'soffice' vorhanden
 
 /// Repräsentiert ein ODF-Dokument
 pub struct OdfDocument {
@@ -127,7 +130,62 @@ impl OdfDocument {
         Ok(())
     }
 
-    /// Batch-Verarbeitung: Mehrere Dokumente aus einer Liste erstellen
+    /// Füllt das Dokument, speichert zunächst als .odt, konvertiert per LibreOffice (soffice) nach PDF und löscht die .odt
+    pub fn fill_and_save_pdf(
+        &self,
+        output_pdf_path: &str,
+        replacements: &HashMap<String, String>,
+    ) -> Result<()> {
+        let pdf_path = Path::new(output_pdf_path);
+        let odt_path = pdf_path.with_extension("odt");
+
+        // 1) Erzeuge .odt
+        self.fill_and_save(odt_path.to_str().unwrap(), replacements)?;
+
+        // 2) Prüfe ob soffice verfügbar ist
+        if which("soffice").is_err() {
+            // Statt eines nicht-existierenden CertgenError::Generic verwenden wir ein std::io::Error
+            // und konvertieren dieses in CertgenError via bestehende From-Implementierung.
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "LibreOffice (soffice) nicht im PATH gefunden. Bitte installiere LibreOffice oder sorge dafür, dass 'soffice' im PATH liegt."
+            ).into());
+        }
+
+        // 3) Konvertiere .odt -> .pdf via soffice (LibreOffice)
+        let outdir = pdf_path.parent().unwrap_or_else(|| Path::new("."));
+        let status = Command::new("soffice")
+            .arg("--headless")
+            .arg("--convert-to")
+            .arg("pdf")
+            .arg("--outdir")
+            .arg(outdir)
+            .arg(&odt_path)
+            .status()?;
+
+        if !status.success() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("LibreOffice-Konvertierung schlug fehl (exit: {:?}).", status.code())
+            ).into());
+        }
+
+        // LibreOffice schreibt <basename>.pdf in outdir
+        let generated_pdf = outdir.join(odt_path.file_stem().unwrap()).with_extension("pdf");
+        if generated_pdf != pdf_path {
+            fs::rename(&generated_pdf, &pdf_path)?;
+        }
+
+        // 4) entferne temporäre .odt
+        if odt_path.exists() {
+            fs::remove_file(&odt_path)?;
+        }
+
+        info!("Successfully created PDF: {}", output_pdf_path);
+        Ok(())
+    }
+
+    /// Batch-Verarbeitung: Mehrere Dokumente aus einer Liste erstellen (ODT)
     pub fn batch_fill(
         &self,
         output_dir: &str,
@@ -141,6 +199,32 @@ impl OdfDocument {
             let output_path = format!("{}/{}", output_dir, filename);
             self.fill_and_save(&output_path, &replacements)?;
             created_files.push(output_path);
+        }
+        
+        Ok(created_files)
+    }
+
+    /// Batch-Verarbeitung: Mehrere Dokumente direkt als PDF erstellen
+    pub fn batch_fill_pdf(
+        &self,
+        output_dir: &str,
+        batch_data: Vec<(String, HashMap<String, String>)>,
+    ) -> Result<Vec<String>> {
+        std::fs::create_dir_all(output_dir)?;
+        
+        let mut created_files = Vec::new();
+        
+        for (filename, replacements) in batch_data {
+            let output_path = Path::new(output_dir).join(filename);
+            // Stelle sicher, dass die Dateiendung .pdf ist
+            let pdf_path = if output_path.extension().is_some() {
+                output_path.with_extension("pdf")
+            } else {
+                output_path.with_extension("pdf")
+            };
+            let pdf_str = pdf_path.to_str().unwrap().to_string();
+            self.fill_and_save_pdf(&pdf_str, &replacements)?;
+            created_files.push(pdf_str);
         }
         
         Ok(created_files)

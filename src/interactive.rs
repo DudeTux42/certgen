@@ -1,6 +1,7 @@
 use crate::template::CertificateData;
 use crate::error::Result;
 use std::io::{self, Write};
+use serde::Serialize;
 
 /// Liest eine Zeile von stdin
 fn read_line(prompt: &str) -> io::Result<String> {
@@ -20,6 +21,12 @@ fn read_optional_line(prompt: &str) -> io::Result<Option<String>> {
     } else {
         Ok(Some(input))
     }
+}
+
+#[derive(Serialize)]
+struct ParticipantEntry {
+    email: String,
+    certificate: CertificateData,
 }
 
 /// Interaktives Erstellen einer JSON-Datei
@@ -120,7 +127,7 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("Geben Sie die Namen der Teilnehmer ein (leer = fertig):");
     
-    let mut participants = Vec::new();
+    let mut participants: Vec<ParticipantEntry> = Vec::new();
     let mut participant_number = 1;
     
     loop {
@@ -136,9 +143,9 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
             None => date_from.clone(),
         };
         
+        // CertificateData::new erwartet (name, date, agenda)
         let mut cert_data = CertificateData::new(
             name,
-            mail.clone(),
             main_date,
             agenda.clone(),
         );
@@ -157,8 +164,9 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
             cert_data.add_field(key.clone(), value.clone());
         }
 
-        participants.push(cert_data, mail);
-        participant_number += 1;, mail
+        // Teilnehmer-Eintrag erstellen (E-Mail wird nur im JSON gespeichert)
+        participants.push(ParticipantEntry { email: mail, certificate: cert_data });
+        participant_number += 1;
     }
 
     if participants.is_empty() {
