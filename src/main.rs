@@ -4,6 +4,10 @@ use log::{error, info};
 use serde_json::Value;
 use std::path::Path;
 
+mod mail;
+
+const DEFAULT_EMAIL_BODY: &str = "Guten Tag <name>,\n\nanbei Ihr Zertifikat <cert>.\n\nMit freundlichen Grüßen\nDas Team";
+
 fn main() {
     if let Err(e) = run() {
         error!("Error: {}", e);
@@ -173,6 +177,36 @@ fn fill_batch(template: &str, json_path: &str, output_dir: &str) -> Result<usize
 
         if let Value::Object(map) = item {
             map.insert("generated_file".to_string(), Value::String(stored_path_string));
+        }
+
+        // Wenn eine E-Mail im Eintrag vorhanden ist, erzeuge automatisch eine .eml-Datei mit Anhang
+        if let Some(Value::String(email_addr)) = item.get("email") {
+            // Erzeuge ein emails-Unterverzeichnis unter output_dir
+            let eml_dir = Path::new(output_dir).join("emails");
+            std::fs::create_dir_all(&eml_dir)?;
+
+            // EML-Dateiname basiert auf dem PDF-Dateinamen
+            let eml_filename = format!("{}.eml", filename.trim_end_matches(".pdf"));
+            let eml_path = eml_dir.join(&eml_filename);
+
+            // Subject und Body (kann später CLI-konfigurierbar gemacht werden)
+            let subject = format!("Ihr Zertifikat: {}", title);
+            let body_template = DEFAULT_EMAIL_BODY;
+
+            // create_eml erwartet Pfad zur erzeugten PDF als Path
+            mail::create_eml(
+                email_addr,
+                &subject,
+                body_template,
+                &cert.name,
+                Path::new(output_str),
+                &eml_path,
+            )?;
+
+            // schreibe generated_eml ins JSON (voller Pfad relativ wie to_string_lossy liefert)
+            if let Value::Object(map) = item {
+                map.insert("generated_eml".to_string(), Value::String(eml_path.to_string_lossy().to_string()));
+            }
         }
 
         created += 1;
