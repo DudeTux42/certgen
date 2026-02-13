@@ -46,6 +46,13 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
         return Ok(());
     }
 
+    // Trainer abfragen für die Mail
+    let trainer = read_line("Trainer: ")?;
+    if trainer.is_empty() {
+        println!("❌ Trainer darf niche leer sein!");
+        return Ok(());
+    }
+
     // Datum abfragen (Start zuerst, dann optional Ende)
     println!();
     let date_from = read_line("Datum / Start-Datum (z.B. 15.01.2024): ")?;
@@ -152,6 +159,9 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
 
         // Titel hinzufügen
         cert_data.add_field("TITLE".to_string(), title.clone());
+
+        // Trainer hinzufügen
+        cert_data.add_field("INSTRUCTOR".to_string(), trainer.clone());
 
         // Datumbereich hinzufügen (falls mehrtägig)
         if let Some(ref to) = date_to {

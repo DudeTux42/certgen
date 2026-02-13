@@ -6,7 +6,80 @@ use std::path::Path;
 
 mod mail;
 
-const DEFAULT_EMAIL_BODY: &str = "Guten Tag <name>,\n\nanbei Ihr Zertifikat <cert>.\n\nMit freundlichen Grüßen\nDas Team";
+const DEFAULT_EMAIL_BODY_PLAIN: &str = "\
+Guten Tag {{NAME}},
+
+herzlichen Glückwunsch zum erfolgreichen Abschluss!
+
+Im Anhang finden Sie Ihr persönliches Zertifikat als PDF-Datei ({{CERT}}).
+
+Wir freuen uns, dass Sie an unserer Schulung teilgenommen haben und 
+wünschen Ihnen viel Erfolg bei der Anwendung des Gelernten.
+
+Bei Fragen stehen wir Ihnen jederzeit gerne zur Verfügung.
+
+
+Mit freundlichen Grüßen
+Ihr Schulungsteam";
+
+const DEFAULT_EMAIL_BODY_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4;">
+        <tr>
+            <td align="center" style="padding: 20px;">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #0066cc; color: white; padding: 30px; text-align: center;">
+                            <h2 style="margin: 0; font-size: 24px;">Ihr Zertifikat ist da! 🎉</h2>
+                        </td>
+                    </tr>
+                    
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <p style="margin: 0 0 15px 0;">Guten Tag <strong>{{NAME}}</strong>,</p>
+                            
+                            <p style="margin: 0 0 15px 0;">herzlichen Glückwunsch zum erfolgreichen Abschluss des Kurses<br>
+                            <strong>{{TITLE}}</strong>!</p>
+                            
+                            <div style="background-color: #f0f8ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0;">
+                                <p style="margin: 0;"><strong>Kursdetails:</strong></p>
+                                <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                                    <li>Datum: {{DATE}}</li>
+                                    <li>Trainer/in: {{INSTRUCTOR}}</li>
+                                </ul>
+                            </div>
+                            
+                            <p style="margin: 20px 0 15px 0;">Im Anhang finden Sie Ihr persönliches Zertifikat als PDF-Datei (<strong>{{CERT}}</strong>).</p>
+                            
+                            <p style="margin: 0 0 15px 0;">Wir hoffen, dass Sie wertvolle Kenntnisse mitnehmen konnten und wünschen 
+                            Ihnen viel Erfolg bei der praktischen Anwendung!</p>
+                            
+                            <p style="margin: 0;">Bei Fragen stehen wir Ihnen jederzeit gerne zur Verfügung.</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6;">
+                            <p style="margin: 0; font-size: 14px; color: #666;">
+                                Mit freundlichen Grüßen<br>
+                                <strong>Ihr B1 Systems Team</strong>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"#;
 
 fn main() {
     if let Err(e) = run() {
@@ -189,18 +262,39 @@ fn fill_batch(template: &str, json_path: &str, output_dir: &str) -> Result<usize
             let eml_filename = format!("{}.eml", filename.trim_end_matches(".pdf"));
             let eml_path = eml_dir.join(&eml_filename);
 
-            // Subject und Body (kann später CLI-konfigurierbar gemacht werden)
+            // Subject und Body
             let subject = format!("Ihr Zertifikat: {}", title);
-            let body_template = DEFAULT_EMAIL_BODY;
+            
+            // Wähle HTML-Template (kannst später auf Plain-Text umstellen mit DEFAULT_EMAIL_BODY_PLAIN)
+            let body_template = DEFAULT_EMAIL_BODY_HTML;
+            let use_html = true;  // auf false setzen für Plain-Text
+            
+            // Ersetze Platzhalter im Body-Template
+            let mut body = body_template
+                .replace("{{NAME}}", &cert.name)
+                .replace("{{CERT}}", &filename);
+            
+            // Ersetze weitere Platzhalter aus custom_fields
+            if let Some(title_val) = cert.custom_fields.get("TITLE") {
+                body = body.replace("{{TITLE}}", title_val);
+            }
+            body = body.replace("{{DATE}}", &cert.date);
+            if let Some(instructor) = cert.custom_fields.get("INSTRUCTOR") {
+                body = body.replace("{{INSTRUCTOR}}", instructor);
+            }
+            if let Some(duration) = cert.custom_fields.get("DURATION") {
+                body = body.replace("{{DURATION}}", duration);
+            }
 
             // create_eml erwartet Pfad zur erzeugten PDF als Path
             mail::create_eml(
                 email_addr,
                 &subject,
-                body_template,
+                &body,
                 &cert.name,
                 Path::new(output_str),
                 &eml_path,
+                use_html,  // ← HIER: der fehlende Parameter
             )?;
 
             // schreibe generated_eml ins JSON (voller Pfad relativ wie to_string_lossy liefert)
