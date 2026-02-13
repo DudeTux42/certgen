@@ -6,8 +6,26 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
 use zip::{ZipArchive, ZipWriter, write::FileOptions, CompressionMethod};
-use log::{debug, info};
+use log::{debug, info, warn};
 use which::which; // Laufzeit-Check ob 'soffice' vorhanden
+
+/// PDF-Konfiguration für Seitenvalidierung
+#[derive(Debug, Clone)]
+pub struct PdfConfig {
+    /// Automatisch leere zweite Seite entfernen (Standard: true)
+    pub remove_empty_second_page: bool,
+    /// Bei mehr als X Seiten einen Fehler werfen (Standard: 2)
+    pub max_pages: usize,
+}
+
+impl Default for PdfConfig {
+    fn default() -> Self {
+        Self {
+            remove_empty_second_page: true,
+            max_pages: 2,
+        }
+    }
+}
 
 /// Repräsentiert ein ODF-Dokument
 pub struct OdfDocument {
@@ -144,8 +162,6 @@ impl OdfDocument {
 
         // 2) Prüfe ob soffice verfügbar ist
         if which("soffice").is_err() {
-            // Statt eines nicht-existierenden CertgenError::Generic verwenden wir ein std::io::Error
-            // und konvertieren dieses in CertgenError via bestehende From-Implementierung.
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "LibreOffice (soffice) nicht im PATH gefunden. Bitte installiere LibreOffice oder sorge dafür, dass 'soffice' im PATH liegt."
@@ -176,6 +192,10 @@ impl OdfDocument {
             fs::rename(&generated_pdf, &pdf_path)?;
         }
 
+        // 3.5) WORKAROUND Prüfe Seitenanzahl und entferne ggf. Seite 2
+        let config = PdfConfig::default();
+        Self::ensure_single_page(&pdf_path, &config)?;
+
         // 4) entferne temporäre .odt
         if odt_path.exists() {
             fs::remove_file(&odt_path)?;
@@ -184,7 +204,115 @@ impl OdfDocument {
         info!("Successfully created PDF: {}", output_pdf_path);
         Ok(())
     }
+    
+    /// Stellt sicher, dass das PDF nur eine Seite hat.
+    /// Entfernt automatisch eine leere zweite Seite (typischerweise durch Fußzeilen-Overflow).
+    fn ensure_single_page(pdf_path: &Path, config: &PdfConfig) -> Result<()> {
+        use lopdf::Document;
 
+        let mut doc = Document::load(pdf_path).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Konnte PDF nicht laden: {}", e)
+            )
+        })?;
+
+        let page_count = doc.get_pages().len();
+
+        match page_count {
+            1 => {
+                // Perfekt, nichts zu tun
+                info!("✓ PDF hat 1 Seite");
+                Ok(())
+            }
+            2 => {
+                if config.remove_empty_second_page {
+                    // Automatisch entfernen
+                    warn!("PDF hat 2 Seiten - entferne automatisch leere Seite 2");
+
+                    // Seite 2 entfernen
+                    Self::remove_page(&mut doc, 2)?;
+
+                    doc.save(pdf_path).map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Konnte bereinigtes PDF nicht speichern: {}", e)
+                        )
+                    })?;
+
+                    info!("✓ Leere Seite 2 entfernt");
+                    Ok(())
+                } else {
+                    // Nur warnen
+                    warn!("⚠️  PDF hat 2 Seiten (automatisches Entfernen ist deaktiviert)");
+                    Ok(())
+                }
+            }
+            n => {
+                if n > config.max_pages {
+                    // Fehler werfen
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "PDF hat {} Seiten! Bitte prüfe die Vorlage - Zertifikate sollten einseitig sein.",
+                            n
+                        )
+                    ).into())
+                } else {
+                    // Nur warnen
+                    warn!("⚠️  PDF hat {} Seiten", n);
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    /// Entfernt eine einzelne Seite aus dem PDF-Dokument
+    fn remove_page(doc: &mut lopdf::Document, page_number: u32) -> Result<()> {
+        use lopdf::Object;
+
+        // Hole alle Seiten
+        let pages = doc.get_pages();
+        let page_ids: Vec<_> = pages.into_iter().collect();
+
+        if page_number as usize > page_ids.len() || page_number == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Ungültige Seitennummer: {}", page_number)
+            ).into());
+        }
+
+        // Seiten-ID der zu entfernenden Seite (page_ids enthält (page_num, ObjectId))
+        let (_page_num, page_id) = page_ids[(page_number - 1) as usize];
+
+        // Entferne die Seite aus dem Dokument
+        doc.delete_object(page_id);
+
+        // Aktualisiere das Pages-Objekt
+        if let Ok(pages_ref) = doc.catalog().and_then(|cat| cat.get(b"Pages")) {
+            if let Ok(pages_id) = pages_ref.as_reference() {
+                if let Ok(pages_dict) = doc.get_object_mut(pages_id).and_then(|obj| obj.as_dict_mut()) {
+                    // Kids-Array aktualisieren
+                    if let Ok(kids) = pages_dict.get_mut(b"Kids").and_then(|obj| obj.as_array_mut()) {
+                        kids.retain(|kid| {
+                            if let Ok(kid_ref) = kid.as_reference() {
+                                kid_ref != page_id
+                            } else {
+                                true
+                            }
+                        });
+
+                        // Count aktualisieren
+                        let new_count = kids.len() as i64;
+                        pages_dict.set("Count", Object::Integer(new_count));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+    
     /// Batch-Verarbeitung: Mehrere Dokumente aus einer Liste erstellen (ODT)
     pub fn batch_fill(
         &self,
