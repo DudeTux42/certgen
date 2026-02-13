@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+SMTP_SERVER="smtp.intern.b1-systems.de:587"
+SMTP_USER="lindermayr"
+FROM_ADDRESS="lindermayr@b1-systems.de"
+
+read -sp "SMTP Passwort: " SMTP_PASS
+echo
+echo
+
+sent=0
+failed=0
+
+for eml in *.eml; do
+    [ -e "$eml" ] || continue
+
+    TO_ADDRESS=$(grep -m1 "^To:" "$eml" | sed 's/To: //' | tr -d '\r')
+
+    echo "=== Sende: $eml -> $TO_ADDRESS ==="
+
+    cat "$eml" | swaks --server "$SMTP_SERVER" \
+                       --auth LOGIN \
+                       --auth-user "$SMTP_USER" \
+                       --auth-password "$SMTP_PASS" \
+                       --from "$FROM_ADDRESS" \
+                       --to "$TO_ADDRESS" \
+                       --tls \
+                       --data -
+
+    EXITCODE=$?
+    echo "Exitcode: $EXITCODE"
+
+    if [ $EXITCODE -eq 0 ]; then
+        echo "✓ Erfolgreich"
+        mv "$eml" "$eml.sent"
+        ((sent++))
+    else
+        echo "✗ Fehlgeschlagen"
+        ((failed++))
+    fi
+
+    echo
+    sleep 1
+done
+
+echo "========================"
+echo "Fertig: $sent versendet, $failed fehlgeschlagen"
