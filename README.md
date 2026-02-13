@@ -18,6 +18,7 @@ Kurz: Du gibst eine ODF-Vorlage und Daten (CLI-Argumente oder JSON) vor; certgen
   - create-json (interaktiver JSON-Generator)
 - JSON-Beispiel (einfach / erweitert)
 - Custom Fields (zusätzliche Platzhalter)
+- Senden der Mails per Bash Script
 - Ausgabe-Dateinamen & Sanitisierung
 - Logging & Debugging
 - Fehlerbehebung
@@ -30,6 +31,8 @@ Kurz: Du gibst eine ODF-Vorlage und Daten (CLI-Argumente oder JSON) vor; certgen
 - Rust Toolchain (rustc + cargo) — https://www.rust-lang.org/tools/install
 - ODF-Vorlage (.odt) mit Platzhaltern (die Platzhalter-Namen müssen den Keys in JSON / CLI entsprechen)
 - (Für Batch) JSON-Datei mit einem Array von Zertifikats-Objekten
+- Libre Office muss installiert sein für das konvertieren der ODT-Dateien in PDF'schreibt
+- Swaks muss auf dem Gerät installiert sein für das Sendeml Script.
 
 ---
 
@@ -62,15 +65,54 @@ certgen <subcommand> --help
 ```
 
 ---
-
 ## Befehle
 
-Die Implementierung enthält die folgenden Subkommandos: fill, batch, example und create-json. Unten sind typische Aufrufe und Beschreibungen.
+Die Implementierung enthält die folgenden Subkommandos: create-json, batch, fill und example. Die typische Arbeitsweise folgt diesem Ablauf:
 
-1) fill — Einzelnes Zertifikat befüllen
+1) create-json — Interaktiver JSON-Generator (Schritt 1)
 
 Beschreibung:
-- Befüllt eine Vorlage einmalig mit Werten, die du per CLI übergibst.
+- Führt interaktiv durch das Anlegen von Datensätzen für Teilnehmer und schreibt die Ergebnisse in eine JSON-Datei.
+- Dies ist üblicherweise der erste Schritt: Hier werden alle Teilnehmerdaten erfasst.
+
+Typischer Aufruf:
+
+```bash
+certgen create-json -o schulungstitel.json
+```
+
+Erklärung:
+- -o / --output: Name der zu erzeugenden JSON-Datei
+- Das Programm fragt interaktiv nach Name, Titel, Datum, Agenda etc. für jeden Teilnehmer
+- Die erfassten Daten werden als JSON-Array gespeichert
+
+2) batch — Batch-Verarbeitung aus JSON (Schritt 2)
+
+Beschreibung:
+- Liest die zuvor erstellte JSON-Datei ein und erzeugt für jeden Eintrag automatisch eine ausgefüllte ODT-Datei.
+- Dies ist der Hauptbefehl für die Massenerstellung von Zertifikaten.
+
+Typischer Aufruf:
+
+```bash
+certgen batch template.odt schulungstitel.json out_dir
+```
+
+Parameter:
+- template.odt: Vorlagendatei
+- schulungstitel.json: JSON-Datei mit Teilnehmerdaten (aus Schritt 1)
+- out_dir: Zielverzeichnis für erzeugte Zertifikate
+
+Dateinamenskonvention:
+- Erzeugte Dateien heißen: certificate_{index}_{sanitized_name}.odt  
+  Beispiel: certificate_1_Max_Mustermann.odt
+
+3) fill — Einzelnes Zertifikat befüllen (optional)
+
+Beschreibung:
+- Befüllt eine Vorlage einmalig mit Werten, die per CLI übergeben werden.
+- Dieser Befehl wird in der Praxis selten benötigt, da normalerweise der Batch-Modus verwendet wird.
+- Nützlich für Testzwecke oder Einzelfälle.
 
 Typischer Aufruf:
 
@@ -85,42 +127,21 @@ certgen fill template.odt \
 --custom-field HOURS="40"
 ```
 
-Erklärung der wichtigsten Optionen (Namen können in --help nachgesehen werden):
+Erklärung der wichtigsten Optionen:
 - template.odt: Pfad zur ODF-Vorlage
 - -o / --output: Ausgabedatei
-- --name: Teilnehmer / Empfänger (wird als `name` verwendet)
-- --title: Titel / Kursname (wird intern als Feld `TITLE` hinzugefügt)
+- --name: Teilnehmer / Empfänger
+- --title: Titel / Kursname
 - --date: Datum (z. B. Ausstellungsdatum)
 - --date-from / --date-to: (optional) Zeitraumangaben
 - --agenda: Mehrzeilige Agenda / Kursinhalt
 - --custom-field KEY=VALUE: zusätzliche Platzhalter (mehrfach möglich)
 
-Hinweis: Das Programm baut intern ein Mapping aus Feldnamen → Werte (z. B. `TITLE`, `NAME`, `DATE`, u. a.) und übergibt dieses an die ODF-Füllroutine.
-
-2) batch — Batch-Verarbeitung aus JSON
+4) example �� JSON-Beispiel erzeugen (Hilfsfunktion)
 
 Beschreibung:
-- Liest eine JSON-Datei mit einem Array von Objekten ein und erzeugt für jeden Eintrag eine ausgefüllte ODT-Datei.
-
-Typischer Aufruf:
-
-```bash
-certgen batch template.odt participants.json out_dir
-```
-
-Parameter:
-- template.odt: Vorlagendatei
-- participants.json: JSON-Datei (Array von Objekten — siehe Beispiel weiter unten)
-- out_dir: Zielverzeichnis für erzeugte Zertifikate
-
-Dateinamenskonvention:
-- Erzeugte Dateien heißen: certificate_{index}_{sanitized_name}.odt  
-  Beispiel: certificate_1_Max_Mustermann.odt
-
-3) example — JSON-Beispiel erzeugen (non-interaktiv)
-
-Beschreibung:
-- Erzeugt eine Beispiel-JSON-Datei (pretty-printed). Es gibt eine einfache und eine erweiterte Variante.
+- Erzeugt eine Beispiel-JSON-Datei ohne interaktive Eingabe.
+- Nützlich, um die Struktur der JSON-Datei zu verstehen oder manuell anzupassen.
 
 Aufruf:
 
@@ -129,16 +150,11 @@ certgen example -o example.json
 certgen example -o example_extended.json --extended
 ```
 
-4) create-json — Interaktiver JSON-Generator
+---
 
-Beschreibung:
-- Führt interaktiv durch das Anlegen von Datensätzen und schreibt die Ergebnisse in die angegebene JSON-Datei.
-
-Aufruf:
-
-```bash
-certgen create-json -o schulungstitel.json
-```
+**Typischer Workflow:**
+1. `certgen create-json -o teilnehmer.json` → Teilnehmerdaten erfassen
+2. `certgen batch template.odt teilnehmer.json zertifikate/` → Alle Zertifikate erstellen
 
 ---
 
@@ -197,6 +213,72 @@ Diese JSON-Dateien kannst du direkt mit `certgen batch` verwenden.
 - In JSON: füge beliebige Schlüssel/Werte in jedes Objekt ein — diese werden 1:1 als Platzhalter-Namen übernommen (z. B. `"INSTRUCTOR": "Dr. Schmidt"`).
 - Per CLI (single fill): Nutze wiederholbare Flags wie `--custom-field KEY=VALUE` (Beispiel oben). Jeder Eintrag wird als weiterer Platzhalter in die Ersetzungstabelle übernommen.
 - Achte darauf, dass die Platzhalter-Namen in deiner ODF-Vorlage exakt den Keys entsprechen (Groß-/Kleinschreibung beachten).
+
+---
+
+## E-Mail-Versand (sendeml Script)
+
+### Aktueller Stand
+
+Derzeit existiert ein separates Bash-Script `sendeml`, das den automatischen Versand von vorbereiteten E-Mail-Dateien (.eml) ermöglicht.
+
+### Funktionsweise
+
+Das Script durchläuft alle `.eml`-Dateien im aktuellen Verzeichnis und versendet sie nacheinander per SMTP:
+
+```bash
+./sendeml
+```
+
+**Was passiert:**
+1. Das Script fragt interaktiv nach dem SMTP-Passwort
+2. Für jede `.eml`-Datei im Verzeichnis:
+   - Wird die Empfängeradresse aus dem `To:`-Header der EML-Datei gelesen
+   - Die E-Mail wird via `swaks` über den konfigurierten SMTP-Server versendet
+   - Bei Erfolg wird die Datei in `.eml.sent` umbenannt (als Archiv)
+   - Bei Fehler bleibt die Datei unverändert
+3. Am Ende wird eine Zusammenfassung angezeigt (erfolgreich vs. fehlgeschlagen)
+
+**Voraussetzungen:**
+- `swaks` muss installiert sein
+- SMTP-Server, Benutzername und Absenderadresse müssen im Script konfiguriert werden
+- Die `.eml`-Dateien müssen korrekt formatiert sein (mit `To:`-Header)
+
+**Konfiguration:**
+Im Script müssen folgende Variablen angepasst werden:
+```bash
+SMTP_SERVER="smtp.example.com:587"
+SMTP_USER="benutzername"
+FROM_ADDRESS="absender@example.com"
+```
+
+### Geplante Integration
+
+**Diese Funktionalität soll zukünftig direkt in das `certgen`-Programm integriert werden**, wobei der Umweg über EML-Dateien entfällt. Stattdessen sollen E-Mails direkt mit der Rust-Library `lettre` erstellt und versendet werden:
+
+```bash
+# Geplant für zukünftige Version:
+certgen send \
+--json teilnehmer.json \
+--cert-dir zertifikate/ \
+--subject "Ihr Zertifikat - {TITLE}" \
+--body-template email.txt \
+--smtp-config smtp.toml
+```
+
+**Vorteile der geplanten Lösung:**
+- Keine temporären EML-Dateien mehr nötig
+- Direkte Integration in Rust (keine externe Abhängigkeit von `swaks`)
+- Besseres Fehlerhandling und Logging
+- Template-Unterstützung für E-Mail-Texte mit Platzhaltern
+- SMTP-Konfiguration über TOML-Datei
+
+Der vereinfachte Workflow:
+1. `certgen create-json -o teilnehmer.json` → Daten erfassen
+2. `certgen batch template.odt teilnehmer.json zertifikate/` → Zertifikate erstellen
+3. `certgen send --json teilnehmer.json --cert-dir zertifikate/` → Direkt versenden (ohne EML-Zwischenschritt)
+
+Bis zur vollständigen Integration kann das separate `sendeml`-Script verwendet werden.
 
 ---
 
