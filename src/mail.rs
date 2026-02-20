@@ -15,6 +15,10 @@ use certgen::error::Result;
 /// - `attachment_path` ist der Pfad zur PDF-Datei, die angehängt wird
 /// - `output_eml_path` ist der Pfad zur zu erzeugenden .eml-Datei
 /// - `use_html` wenn true, wird der Body als HTML interpretiert
+
+const LOGO_PNG: &[u8] = include_bytes!("../assets/b1_logo.png");
+
+
 pub fn create_eml(
     to: &str,
     subject: &str,
@@ -85,6 +89,21 @@ pub fn create_eml(
 
         // Ende multipart/alternative
         eml.push_str(&format!("--{}--\r\n", boundary_inner));
+
+        // Logo als Inline Image einbetten (für html)
+        eml.push_str(&format!("--{}\r\n", boundary_outer));
+        eml.push_str("Content-Type: image/png; name=\"b1_logo.png\"\r\n");
+        eml.push_str("Content-Transfer-Encoding: base64\r\n");
+        eml.push_str("Content-Disposition: Inline\r\n");
+        eml.push_str("Content-ID: <logo@b1systems>\r\n");
+        eml.push_str("\r\n");
+
+        let b64 = general_purpose::STANDARD.encode(LOGO_PNG);
+        for chunk in b64.as_bytes().chunks(76) {
+            eml.push_str(&format!("{}\r\n", std::str::from_utf8(chunk).unwrap()));
+        }
+
+
     } else {
         // Nur Plain-Text
         eml.push_str(&format!("--{}\r\n", boundary_outer));

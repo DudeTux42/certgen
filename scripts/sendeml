@@ -12,35 +12,35 @@ sent=0
 failed=0
 
 for eml in *.eml; do
-    [ -e "$eml" ] || continue
+  [ -e "$eml" ] || continue
 
-    TO_ADDRESS=$(grep -m1 "^To:" "$eml" | sed 's/To: //' | tr -d '\r')
+  TO_ADDRESS=$(grep -m1 "^To:" "$eml" | sed 's/To: //' | tr -d '\r')
 
-    echo "=== Sende: $eml -> $TO_ADDRESS ==="
+  echo "=== Sende: $eml -> $TO_ADDRESS ==="
 
-    cat "$eml" | swaks --server "$SMTP_SERVER" \
-                       --auth LOGIN \
-                       --auth-user "$SMTP_USER" \
-                       --auth-password "$SMTP_PASS" \
-                       --from "$FROM_ADDRESS" \
-                       --to "$TO_ADDRESS" \
-                       --tls \
-                       --data -
+  cat "$eml" | swaks --server "$SMTP_SERVER" \
+    --auth LOGIN \
+    --auth-user "$SMTP_USER" \
+    --auth-password "$SMTP_PASS" \
+    --from "$FROM_ADDRESS" \
+    --to "$TO_ADDRESS" \
+    --tls \
+    --data -
 
-    EXITCODE=$?
-    echo "Exitcode: $EXITCODE"
+  EXITCODE=$?
+  echo "Exitcode: $EXITCODE"
 
-    if [ $EXITCODE -eq 0 ]; then
-        echo "✓ Erfolgreich"
-        mv "$eml" "$eml.sent"
-        ((sent++))
-    else
-        echo "✗ Fehlgeschlagen"
-        ((failed++))
-    fi
+  if [ $EXITCODE -eq 0 ]; then
+    echo "✓ Erfolgreich"
+    mv "$eml" "$eml.sent"
+    ((sent++))
+  else
+    echo "✗ Fehlgeschlagen"
+    ((failed++))
+  fi
 
-    echo
-    sleep 1
+  echo
+  sleep 1
 done
 
 echo "========================"

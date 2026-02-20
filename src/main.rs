@@ -33,9 +33,19 @@ const DEFAULT_EMAIL_BODY_HTML: &str = r#"<!DOCTYPE html>
         <tr>
             <td align="center" style="padding: 20px;">
                 <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <!-- Header -->
+                    
+                    <!-- Logo Banner ganz oben -->
                     <tr>
-                        <td style="background-color: #0066cc; color: white; padding: 30px; text-align: center;">
+                        <td style="background-color: #ffffff; padding: 20px; text-align: center; border-bottom: 2px solid #f0f0f0;">
+                            <img src="cid:logo@b1systems" 
+                                 alt="B1 Systems" 
+                                 style="max-width: 500px; width: 100%; height: auto; display: block; margin: 0 auto;" />
+                        </td>
+                    </tr>
+                    
+                    <!-- Header mit Überschrift -->
+                    <tr>
+                        <td style="background-color: #234779; color: white; padding: 15px; text-align: center;">
                             <h2 style="margin: 0; font-size: 24px;">Ihr Zertifikat ist da! 🎉</h2>
                         </td>
                     </tr>
@@ -47,14 +57,6 @@ const DEFAULT_EMAIL_BODY_HTML: &str = r#"<!DOCTYPE html>
                             
                             <p style="margin: 0 0 15px 0;">herzlichen Glückwunsch zum erfolgreichen Abschluss des Kurses<br>
                             <strong>{{TITLE}}</strong>!</p>
-                            
-                            <div style="background-color: #f0f8ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0;">
-                                <p style="margin: 0;"><strong>Kursdetails:</strong></p>
-                                <ul style="margin: 10px 0 0 0; padding-left: 20px;">
-                                    <li>Datum: {{DATE}}</li>
-                                    <li>Trainer/in: {{INSTRUCTOR}}</li>
-                                </ul>
-                            </div>
                             
                             <p style="margin: 20px 0 15px 0;">Im Anhang finden Sie Ihr persönliches Zertifikat als PDF-Datei (<strong>{{CERT}}</strong>).</p>
                             
@@ -68,9 +70,18 @@ const DEFAULT_EMAIL_BODY_HTML: &str = r#"<!DOCTYPE html>
                     <!-- Footer -->
                     <tr>
                         <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6;">
-                            <p style="margin: 0; font-size: 14px; color: #666;">
+                            <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">
                                 Mit freundlichen Grüßen<br>
-                                <strong>Ihr B1 Systems Team</strong>
+                                <strong>Das Team der B1 Systems GmbH</strong>
+                            </p>
+                            <hr style="border: none; border-top: 1px solid #ccc; margin: 10px 0;">
+                            <p style="margin: 5px 0; font-size: 11px; color: #666;">
+                                B1 Systems GmbH | Osterfeldstraße 7 | 85088 Vohburg<br>
+                                Geschäftsführer: Ralph Dehner<br>
+                                Amtsgericht Ingolstadt, HRB 3537<br>
+                                <br>
+                                E-Mail: <a href="mailto:zertifikate@b1-systems.de">zertifikate@b1-systems.de</a><br>
+                                Web: <a href="https://www.b1-systems.de">www.b1-systems.de</a>
                             </p>
                         </td>
                     </tr>
@@ -80,6 +91,65 @@ const DEFAULT_EMAIL_BODY_HTML: &str = r#"<!DOCTYPE html>
     </table>
 </body>
 </html>"#;
+
+// const DEFAULT_EMAIL_BODY_HTML: &str = r#"<!DOCTYPE html>
+// <html>
+// <head>
+//     <meta charset="utf-8">
+//     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+// </head>
+// <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+//     <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4;">
+//         <tr>
+//             <td align="center" style="padding: 20px;">
+//                 <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+//                     <!-- Header -->
+//                     <tr>
+//                         <td style="background-color: #0066cc; color: white; padding: 30px; text-align: center;">
+//                             <h2 style="margin: 0; font-size: 24px;">Ihr Zertifikat ist da! 🎉</h2>
+//                         </td>
+//                     </tr>
+//
+//                     <!-- Body -->
+//                     <tr>
+//                         <td style="padding: 30px;">
+//                             <p style="margin: 0 0 15px 0;">Guten Tag <strong>{{NAME}}</strong>,</p>
+//
+//                             <p style="margin: 0 0 15px 0;">herzlichen Glückwunsch zum erfolgreichen Abschluss des Kurses<br>
+//                             <strong>{{TITLE}}</strong>!</p>
+//
+//                             <div style="background-color: #f0f8ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0;">
+//                                 <p style="margin: 0;"><strong>Kursdetails:</strong></p>
+//                                 <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+//                                     <li>Datum: {{DATE}}</li>
+//                                     <li>Trainer/in: {{INSTRUCTOR}}</li>
+//                                 </ul>
+//                             </div>
+//
+//                             <p style="margin: 20px 0 15px 0;">Im Anhang finden Sie Ihr persönliches Zertifikat als PDF-Datei (<strong>{{CERT}}</strong>).</p>
+//
+//                             <p style="margin: 0 0 15px 0;">Wir hoffen, dass Sie wertvolle Kenntnisse mitnehmen konnten und wünschen 
+//                             Ihnen viel Erfolg bei der praktischen Anwendung!</p>
+//
+//                             <p style="margin: 0;">Bei Fragen stehen wir Ihnen jederzeit gerne zur Verfügung.</p>
+//                         </td>
+//                     </tr>
+//
+//                     <!-- Footer -->
+//                     <tr>
+//                         <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6;">
+//                             <p style="margin: 0; font-size: 14px; color: #666;">
+//                                 Mit freundlichen Grüßen<br>
+//                                 <strong>Ihr B1 Systems Team</strong>
+//                             </p>
+//                         </td>
+//                     </tr>
+//                 </table>
+//             </td>
+//         </tr>
+//     </table>
+// </body>
+// </html>"#;
 
 fn main() {
     if let Err(e) = run() {
