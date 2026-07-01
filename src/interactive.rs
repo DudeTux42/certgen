@@ -32,7 +32,7 @@ struct ParticipantEntry {
 /// Interaktives Erstellen einer JSON-Datei
 pub fn create_json_interactive(output_path: &str) -> Result<()> {
     println!("╔══════════════════════════════════════════════════════╗");
-    println!("║  📝 Interaktiver JSON-Generator für Zertifikate     ║");
+    println!("║  📝 Interaktiver JSON-Generator für Zertifikate      ║");
     println!("╚══════════════════════════════════════════════════════╝");
     println!();
 
@@ -64,34 +64,30 @@ pub fn create_json_interactive(output_path: &str) -> Result<()> {
     let date_to = read_optional_line("End-Datum (leer lassen für eintägigen Kurs): ")?;
 
     // Agenda abfragen
-    println!();
-    println!("📋 Agenda / Kursinhalte");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Geben Sie die Agendapunkte einzeln ein (Maximal 10 Zeilen, leer = fertig):");
-    
+    // 1. Array initialisieren (Typ Vec<String>)
     let mut agenda_items = Vec::new();
     let mut item_number = 1;
-    
+
     loop {
-        if item_number > 10 {
-            break
-        };
+        // :FIXME Künstlich Grenze bis Formatierung angepasst wurde darüber
+        if item_number > 10 { break; }
 
         let item = read_line(&format!("  {}. ", item_number))?;
         if item.is_empty() {
             break;
         }
 
-        agenda_items.push(format!("· {}", item));
+        agenda_items.push(item); 
         item_number += 1;
     }
 
     if agenda_items.is_empty() {
-        println!("⚠️  Keine Agenda-Punkte eingegeben. Verwende Platzhalter.");
-        agenda_items.push("· Kursinhalt".to_string());
+        println!("⚠️ Keine Agenda-Punkte eingegeben. Verwende Platzhalter.");
+        agenda_items.push("Kursinhalt".to_string());
     }
 
-    let agenda = agenda_items.join("\n");
+    // --- JSON VERARBEITUNG ---
+    let json_array = serde_json::to_string(&agenda_items).unwrap();
 
     // Custom Fields abfragen
     println!();

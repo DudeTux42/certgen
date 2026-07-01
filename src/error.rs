@@ -19,6 +19,19 @@ pub enum CertgenError {
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    #[error("LaTeX engine not found in PATH: {0}")]
+    LatexEngineNotFound(String),
+
+    #[error("LaTeX compile failed with {engine}\nstdout:\n{stdout}\nstderr:\n{stderr}")]
+    LatexCompileFailed {
+        engine: String,
+        stdout: String,
+        stderr: String,
+    },
+
+    #[error("PDF generation failed: {0}")]
+    PdfGenerationFailed(String),
 }
 
 pub type Result<T> = std::result::Result<T, CertgenError>;
