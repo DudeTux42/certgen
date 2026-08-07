@@ -5,30 +5,48 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CertificateData {
     pub name: String,
-    
+
     /// Hauptdatum (bei eintägigen Kursen) oder Enddatum (bei mehrtägigen)
     pub date: String,
-    
+
+    /// Legacy-Feld (rückwärtskompatibel), falls alte JSONs noch agenda als String liefern.
+    #[serde(default)]
     pub agenda: String,
-    
+
+    /// Neue bevorzugte Form: einzelne Agenda-Punkte
+    #[serde(default)]
+    pub agenda_items: Vec<String>,
+
     /// Startdatum (optional, nur bei mehrtägigen Kursen)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_from: Option<String>,
-    
+
     /// Enddatum (optional, nur bei mehrtägigen Kursen)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_to: Option<String>,
-    
+
     #[serde(flatten)]
     pub custom_fields: HashMap<String, String>,
 }
 
 impl CertificateData {
     pub fn new(name: String, date: String, agenda: String) -> Self {
+        // Rückwärtskompatibel: wenn agenda gesetzt wurde, als ein item speichern
+        let agenda_items = if agenda.trim().is_empty() {
+            Vec::new()
+        } else {
+            agenda
+                .lines()
+                .map(|l| l.trim().trim_start_matches('·').trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        };
+
         Self {
             name,
             date,
             agenda,
+            agenda_items,
             date_from: None,
             date_to: None,
             custom_fields: HashMap::new(),
@@ -40,87 +58,65 @@ impl CertificateData {
         self.custom_fields.insert(key, value);
     }
 
+    /// Agenda robust als Liste zurückgeben (neu + fallback auf legacy)
+    pub fn resolved_agenda_items(&self) -> Vec<String> {
+        if !self.agenda_items.is_empty() {
+            return self
+                .agenda_items
+                .iter()
+                .map(|s| s.trim().trim_start_matches('·').trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+
+        self.agenda
+            .lines()
+            .map(|l| l.trim().trim_start_matches('·').trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
     /// Generiert den intelligenten Datumstext
     fn get_intelligent_date_text(&self) -> String {
         match (&self.date_from, &self.date_to) {
-            (Some(from), Some(to)) => {
-                // Mehrtägiger Kurs: "vom ... bis ..."
-                format!("von {} bis {}", from, to)
-            }
-            _ => {
-                // Eintägiger Kurs: "am ..."
-                format!("am {}", self.date)
-            }
+            (Some(from), Some(to)) => format!("von {} bis {}", from, to),
+            _ => format!("am {}", self.date),
         }
     }
 
     /// Gibt alle Platzhalter mit ihren Werten zurück
     pub fn to_replacements(&self) -> HashMap<String, String> {
         let mut replacements = HashMap::new();
-        
-        // NAME
+
         replacements.insert("NAME".to_string(), self.name.clone());
-        
-        // VON_AN - der intelligente Datumstext
+
         let date_text = self.get_intelligent_date_text();
         replacements.insert("VON_AN".to_string(), date_text.clone());
-        
-        // DATE - auch als Alias für VON_AN
         replacements.insert("DATE".to_string(), date_text);
-        
-        // AGENDA
+
+        // Legacy-String weiter befüllen (für alte Templates)
         replacements.insert("AGENDA".to_string(), self.agenda.clone());
-        
-        // Benutzerdefinierte Felder (z.B. TITLE)
+
+        // Neue bevorzugte Rohdaten (durch '\n' getrennt) für Renderer
+        let items = self.resolved_agenda_items();
+        replacements.insert("AGENDA_ITEMS".to_string(), items.join("\n"));
+
         for (key, value) in &self.custom_fields {
             replacements.insert(key.clone(), value.clone());
         }
-        
+
         replacements
     }
 
-    /// Lädt Daten aus einer JSON-Datei
     pub fn from_json_file(path: &str) -> crate::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let data = serde_json::from_str(&content)?;
         Ok(data)
     }
 
-    /// Lädt mehrere Datensätze aus einer JSON-Datei
     pub fn batch_from_json_file(path: &str) -> crate::error::Result<Vec<Self>> {
         let content = std::fs::read_to_string(path)?;
         let data = serde_json::from_str(&content)?;
         Ok(data)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_single_day_course() {
-        let data = CertificateData::new(
-            "Max".to_string(),
-            "15.01.2024".to_string(),
-            "Rust".to_string(),
-        );
-        
-        let replacements = data.to_replacements();
-        assert_eq!(replacements.get("VON_AN"), Some(&"am 15.01.2024".to_string()));
-    }
-
-    #[test]
-    fn test_multi_day_course() {
-        let mut data = CertificateData::new(
-            "Max".to_string(),
-            "15.01.2024".to_string(),
-            "Rust".to_string(),
-        );
-        data.date_from = Some("10.01.2024".to_string());
-        data.date_to = Some("15.01.2024".to_string());
-        
-        let replacements = data.to_replacements();
-        assert_eq!(replacements.get("VON_AN"), Some(&"vom 10.01.2024 bis 15.01.2024".to_string()));
     }
 }

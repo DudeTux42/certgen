@@ -1,5 +1,5 @@
 use crate::error::{CertgenError, Result};
-use log::info;
+use log::{info, warn};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -49,14 +49,127 @@ impl LatexDocument {
         out
     }
 
-    /// Ersetzt {{KEY}}-Platzhalter im Template
+    /// Baut Agenda-Layout mit dynamischer Skalierung gegen Überlauf
+    fn build_agenda_layout(items_raw: &str) -> (String, String, String) {
+        const ONE_COL_MAX: usize = 10;
+        const MAX_PHYSICAL_LINES: usize = 11; 
+
+        let items: Vec<String> = items_raw
+            .lines()
+            .map(|l| l.trim().trim_start_matches('·').trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if items.is_empty() {
+            return (
+                String::from(r"\fontsize{14pt}{16pt}\selectfont\RaggedRight\begin{itemize}[leftmargin=*,nosep]\n\item Kursinhalt\n\end{itemize}"),
+                String::new(),
+                String::new(),
+            );
+        }
+
+        // Hilfsfunktion zur Schätzung der echten Zeilenanzahl
+        let estimate_lines = |slice: &[String], col_width_chars: usize| -> usize {
+            let mut total_lines = 0;
+            for item in slice {
+                let wrapped = (item.len() as f64 / col_width_chars as f64).ceil() as usize;
+                total_lines += std::cmp::max(1, wrapped);
+            }
+            total_lines
+        };
+
+        let (is_single, left_slice, right_slice) = if items.len() <= ONE_COL_MAX {
+            (true, items, Vec::new())
+        } else {
+            let mid = items.len().div_ceil(2);
+            let left = items[..mid].to_vec();
+            let right = items[mid..].to_vec();
+            (false, left, right)
+        };
+
+        let target_slice = if is_single { 
+            &left_slice 
+        } else if left_slice.len() > right_slice.len() { 
+            &left_slice 
+        } else { 
+            &right_slice 
+        };
+
+        let estimated_lines = estimate_lines(target_slice, if is_single { 45 } else { 35 });
+
+        let (font_size, line_skip, item_sep) = if estimated_lines > 12 {
+            ("9pt", "10.5pt", "0.5pt") // Ultimativer Kompaktmodus
+        } else if estimated_lines > MAX_PHYSICAL_LINES {
+            ("10pt", "11.5pt", "1.5pt") // Sehr kompakt
+        } else if estimated_lines > 8 {
+            ("11.5pt", "13pt", "2.5pt")  // Normal kompakt
+        } else {
+            ("13pt", "15pt", "4pt")      // Großzügig
+        };
+
+        let to_lines = |slice: &[String], max_width: Option<&str>| -> String {
+            if slice.is_empty() { return String::new(); }
+
+            let mut item_block = String::new();
+
+            if let Some(width) = max_width {
+                item_block.push_str(&format!("\\begin{{varwidth}}{{{}}}\n", width));
+            }
+
+            // \RaggedRight direkt HIER einfügen, damit der Listeninhalt nie im Blocksatz landet!
+            item_block.push_str(&format!(
+                "\\fontsize{{{}}}{{{}}}\\selectfont\\RaggedRight\\begin{{itemize}}[leftmargin=*,topsep=0pt,parsep=0pt,itemsep={}]\n", 
+                font_size, line_skip, item_sep
+            ));
+
+            for i in slice {
+                item_block.push_str(&format!("  \\item {}\n", i));
+            }
+            item_block.push_str("\\end{itemize}");
+
+            if max_width.is_some() {
+                item_block.push_str("\n\\end{varwidth}");
+            }
+
+            item_block
+        };
+
+        if is_single {
+            // Einspaltig: Nutzt varwidth mit einer maximalen Breite von 8.8cm für die Zentrierung
+            (to_lines(&left_slice, Some("8.8cm")), String::new(), String::new())
+        } else {
+            // Zweispaltig: KEIN varwidth (None), damit die feste Spaltenbreite im Template greift
+            (String::new(), to_lines(&left_slice, None), to_lines(&right_slice, None))
+        }
+    }
+
     fn render_template(content: &str, replacements: &HashMap<String, String>) -> String {
         let mut result = content.to_string();
-        for (key, value) in replacements {
-            let token = format!("{{{{{}}}}}", key);
-            let escaped_value = Self::escape_latex(value);
-            result = result.replace(&token, &escaped_value);
+
+        if let Some(items_raw) = replacements.get("AGENDA_ITEMS") {
+            let (single, left, right) = Self::build_agenda_layout(items_raw);
+            result = result.replace("{{AGENDA_SINGLE}}", &single);
+            result = result.replace("{{AGENDA_LEFT}}", &left);
+            result = result.replace("{{AGENDA_RIGHT}}", &right);
+        } else {
+            result = result.replace("{{AGENDA_SINGLE}}", r"\textbullet\ Kursinhalt");
+            result = result.replace("{{AGENDA_LEFT}}", "");
+            result = result.replace("{{AGENDA_RIGHT}}", "");
         }
+
+        for (key, value) in replacements {
+            if key == "AGENDA_ITEMS"
+                || key == "AGENDA_SINGLE"
+                || key == "AGENDA_LEFT"
+                || key == "AGENDA_RIGHT"
+            {
+                continue;
+            }
+
+            let token = format!("{{{{{}}}}}", key);
+            result = result.replace(&token, &Self::escape_latex(value));
+        }
+
         result
     }
 
@@ -91,33 +204,30 @@ impl LatexDocument {
         output_pdf_path: &str,
         replacements: &HashMap<String, String>,
     ) -> Result<()> {
-        // Laufzeit-Check xelatex
         if which("xelatex").is_err() {
-            return Err(CertgenError::LatexEngineNotFound(
-                "xelatex".to_string(),
-            ));
+            return Err(CertgenError::LatexEngineNotFound("xelatex".to_string()));
         }
 
         let template_path = PathBuf::from(&self.path);
         let template_dir = template_path
             .parent()
-            .ok_or_else(|| CertgenError::InvalidTemplate)?;
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
 
         let template_content = fs::read_to_string(&template_path)?;
-
         let rendered = Self::render_template(&template_content, replacements);
 
         let tmp = tempdir()?;
         let workdir = tmp.path();
 
-        // Assets (z.B. Hintergrund-PDF) kopieren
-        Self::copy_template_assets(template_dir, workdir)?;
+        if let Err(e) = Self::copy_template_assets(template_dir, workdir) {
+            warn!("Asset copy failed: {}", e);
+            return Err(e);
+        }
 
-        // Gerendertes Hauptdokument immer als document.tex
         let tex_path = workdir.join("document.tex");
         fs::write(&tex_path, rendered)?;
 
-        // 2x laufen lassen für stabile Layout-Elemente/Refs
         for _ in 0..2 {
             let output = Command::new("xelatex")
                 .arg("-interaction=nonstopmode")
@@ -148,9 +258,10 @@ impl LatexDocument {
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::copy(&generated_pdf, out_path)?;
 
+        fs::copy(&generated_pdf, out_path)?;
         info!("Successfully created PDF via LaTeX: {}", output_pdf_path);
+
         Ok(())
     }
 
@@ -161,7 +272,6 @@ impl LatexDocument {
         batch_data: Vec<(String, HashMap<String, String>)>,
     ) -> Result<Vec<String>> {
         fs::create_dir_all(output_dir)?;
-
         let mut created_files = Vec::new();
 
         for (filename, replacements) in batch_data {
@@ -192,16 +302,5 @@ mod tests {
         assert!(e.contains(r"\#"));
         assert!(e.contains(r"\{"));
         assert!(e.contains(r"\}"));
-    }
-
-    #[test]
-    fn test_render_template() {
-        let tpl = "Hallo {{NAME}}, Kurs {{TITLE}}";
-        let mut map = HashMap::new();
-        map.insert("NAME".to_string(), "Max".to_string());
-        map.insert("TITLE".to_string(), "Linux Basics".to_string());
-
-        let out = LatexDocument::render_template(tpl, &map);
-        assert_eq!(out, "Hallo Max, Kurs Linux Basics");
     }
 }

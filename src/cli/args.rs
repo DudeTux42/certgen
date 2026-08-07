@@ -86,6 +86,13 @@ pub enum Commands {
         #[arg(short, long, default_value = "teilnehmer.json")]
         output: String,
     },
+
+    /// Send .eml Files vie smtp
+    SendMail {
+        /// Path to JSON that was updated by the bastch command
+        #[arg(short, long)]
+        json: String,
+    }
 }
 
 /// Parse a single key-value pair
